@@ -1,0 +1,77 @@
+# .cursorrules - AI 开发宪法
+# 每次生成代码前，必须阅读并严格遵守以下规则。违反规则将导致任务失败。
+
+## 🚨 核心原则
+1.  **最小改动原则**：仅修改与任务直接相关的代码行。禁止重构、格式化或修改无关代码。
+2.  **规则优先**：你的所有行为必须优先遵守本文件及 `AGENTS.md` 中的规则。
+3.  **自检义务**：每次生成代码后，必须主动检查是否符合所有规则，并在回复末尾附上自检报告。
+
+## 📜 编码与文件操作 (Encoding & Files)
+- **强制 UTF-8**：所有文件读写操作必须显式指定 UTF-8 编码。PowerShell 必须使用 `-Encoding UTF8`。
+- **BOM 规范**：`.bat` 文件必须无 BOM。HTML/JS 文件避免双 BOM。
+- **字节级修复**：修复中文乱码（U+FFFD）时，必须使用字节级读写（`ReadAllBytes`/`WriteAllBytes`），禁止使用字符串 `.Replace()`。
+- **验证**：修改后，必须用 `$text.Contains('中文字符')` 验证中文是否正确。
+
+## 💻 HTML/JS 编辑 (HTML/JS Editing)
+- **禁止行号定位**：永远不要使用固定行号来修改代码。必须使用字符串匹配（如 `-match`）来定位目标。
+- **DOM 顺序铁律**：所有通过 `getElementById` 引用的 DOM 元素，其 HTML 定义必须在 `<script>` 标签之前。
+- **防御性编程**：所有 DOM 操作前必须进行 null 检查（`if(el)`）。
+- **错误捕获**：关键路径必须添加 `try/catch`，并添加 `window.onerror` 捕获全局错误。
+- **语法检查**：每次非平凡编辑后，必须运行 `ode --check` 验证 JS 语法。
+
+## 🛠️ 调试与验证 (Debugging & Validation)
+- **调试顺序**：1. 浏览器 Console -> 2. 服务器端口 -> 3. 媒体文件 -> 4. 编码问题。
+- **验证三要素**：每次编辑后，必须验证：① JS 语法 ② 关键 DOM 元素是否存在 ③ 服务器响应是否正确。
+- **服务器启动**：使用 `Start-Process -WindowStyle Hidden` 启动后台服务器。验证服务器是否运行使用 `curl`，而非 `Invoke-WebRequest`。
+
+
+## 🛡️ 停止崩溃容灾 (Stop Crash Hardening)
+- **handler 整体包 try/catch**：停止按钮的 click handler 整体必须包 try/catch。任何 DOM 操作（setD、textContent 赋值）都可能 throw，必须确保 catch 块中强制显示结束覆盖层。
+- **forceEndOverlay() 兜底函数**：独立函数，用 `el.style.cssText='opacity:1!important;pointer-events:auto!important;display:flex!important'` 强制显示覆盖层。在 catch 块和 setTimeout(2000) 两路调用。
+- **所有 textContent 赋值加 null guard**：`if(el)el.textContent = val`，停止 handler 内无裸露 DOM 访问。
+- **CSS `.show` 类用 `!important` 兜底**：结束覆盖层和卡片的可见性不能完全依赖 GSAP 的 `tl.to()`。CSS 中 `.show` 状态必须用 `!important` 保证强制可见。
+- **GSAP timeline 安全播放**：`tl.eventCallback('onComplete', ...)` 清理摄像头资源；`setTimeout(forceEndOverlay, 2000)` 作为最终兜底，防止 GSAP 静默失败。
+
+## 📂 文件完整性检查 (File Integrity)
+- **每次编辑后检查文件重复**：搜索文件中有几个 `<html` 或 `<!DOCTYPE`。多余的表示文件已被意外拼接成两份，会导致 DOM 元素冲突（getElementById 返回第一个副本，事件绑定混乱）。
+- **修复方法**：用字节级搜索找到第二个 `<html` 标签，保留第一个 `<html>` 到第一个 `</html>` 之间的内容。
+- **验证 HTML 完整性**：用 Select-String 检查关键元素（#cover、#endOverlay、canvas、video、#controls）的相对顺序是否正确。
+
+## 🐍 编辑工具选择 (Edit Tool Choice)
+- **Python 优先于 PowerShell heredoc**：涉及多行文本替换、中文、正则时，写临时 .py 文件（`Set-Content -Encoding UTF8`）执行，比在 PowerShell 命令行处理字符串拼接/转义稳定得多。
+- **禁止 PowerShell 中的 @""@ heredoc 传递 Python 代码**：PowerShell heredoc 可能引入 BOM 或破坏引号嵌套，导致 SyntaxError。
+- **PowerShell 的单行 python3 -c 只用于简单查询**：多行脚本、含中文的替换必须写 .py 文件。
+
+## 🎨 动画与样式 (Animation & Style)
+- **GSAP 优先**：复杂动画使用 GSAP timeline，避免与 CSS transition 冲突。
+- **onComplete 清理**：资源清理（如关闭摄像头）必须在 GSAP 动画的 `onComplete` 回调中执行。
+- **停止状态**：停止摄像头后，控件应保持可见（`opacity: .35`），而不是 `display: none`。
+- **Z-index 层级**：确保控件容器的 z-index 高于结束覆盖层。
+
+## 📝 输出格式
+- 每次回复的末尾，必须包含一个自检报告，格式如下：
+  ---
+  **自检报告**
+  - 是否遵守最小改动原则？：是/否
+  - 是否遵守编码规范？：是/否
+  - 是否遵守 DOM 顺序铁律？：是/否
+  - 是否添加了必要的错误捕获？：是/否
+
+## 🧹 功能移除 (Feature Removal)
+- **全量搜索**：移除功能前，必须全文搜索该功能的所有相关关键词（CSS id/class、HTML id、JS 变量名、函数名）。
+- **五点清理法**：必须移除全部 5 类痕迹——CSS 规则、HTML 元素、JS 变量声明、函数定义、所有调用点。
+- **邻近代码检查**：删除代码块后，检查周围代码的完整性（brace 是否匹配，缩进是否正常）。
+- **批量删除用 Python 脚本**：使用精确行号集合（如 set()）做删除标记，避免 brace_depth 计数溢出导致的过量删除。
+﻿## 📊 变量与帧计数 (Variables & Frame Counting)
+- **声明完整性**：所有被引用的全局变量必须有 var 声明和初始化。结束画面引用的 _frameCount 必须在 render() 循环中逐帧递增。
+- **数据真实性**：结束画面的统计数据（帧数、时长）必须源自真实运行计数，不能写死 0。
+
+## 🐍 Python 文本替换精度 (Python Text Precision)
+- **repr() 预览**：替换前用 Python 的 repr() 打印目标区段，确认 CRLF/LF 和空白行精确格式。
+- **\\r\\n 匹配 Windows 文件**：替换模式必须使用 \\r\\n 匹配真实行尾。
+- **分步验证**：每步替换后用 keyword in text 验证，避免累积错误。
+
+## 🔍 功能验证 (Feature Verification)
+- **先验证后删除**：用户要求移除功能时，使用 Select-String -Pattern 全文搜索所有相关关键词。如果功能不存在（从未实现或已在之前删除），告知用户实情，不执行空操作。
+- **空函数体识别**：对于函数体为空（仅有注释或变量声明）的函数，标记为"未实现占位符"，不当作已实现功能处理。
+- **区分"不存在"与"已实现"**：不要假设用户描述的功能一定存在于代码中。搜索确认后才能操作。

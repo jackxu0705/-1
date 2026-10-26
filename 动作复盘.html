@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>动作复盘 - AI 运动分析</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#0a0a0f;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;font-size:13px}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:2px}
+#app{display:flex;flex-direction:column;height:100vh}
+.toolbar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0;flex-wrap:wrap}
+.toolbar .logo{font-size:14px;font-weight:600;letter-spacing:.05em;color:#39ff14;margin-right:12px}
+.toolbar .logo small{font-weight:400;color:rgba(255,255,255,.35);font-size:11px}
+.toolbar .sep{width:1px;height:20px;background:rgba(255,255,255,.1)}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#ccc;cursor:pointer;font-size:12px;transition:all .2s;white-space:nowrap}
+.btn:hover{border-color:#39ff14;color:#39ff14;background:rgba(57,255,20,.06)}
+.btn.primary{background:rgba(57,255,20,.1);border-color:rgba(57,255,20,.3);color:#39ff14}
+.btn.primary:hover{background:rgba(57,255,20,.2)}
+.btn.danger{border-color:rgba(255,80,80,.2);color:#ff6666}
+.btn.danger:hover{border-color:#ff5050;color:#ff5050}
+.btn:disabled{opacity:.35;cursor:default;pointer-events:none}
+.btn-sm{padding:3px 8px;font-size:11px}
+.btn-icon{padding:5px 8px;font-size:14px;line-height:1}
+.btn-group{display:inline-flex;gap:2px}
+.btn-group .btn{border-radius:0}
+.btn-group .btn:first-child{border-radius:6px 0 0 6px}
+.btn-group .btn:last-child{border-radius:0 6px 6px 0}
+.btn-group .btn.active{background:rgba(57,255,20,.15);border-color:rgba(57,255,20,.4);color:#39ff14}
+input[type="file"]{display:none}
+#main{display:flex;flex:1;overflow:hidden}
+#player{flex:1;display:flex;flex-direction:column;position:relative;min-width:0}
+#videoWrap{flex:1;position:relative;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#videoWrap video{max-width:100%;max-height:100%;display:block}
+#videoWrap canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#emptyState{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(255,255,255,.2);gap:12px;z-index:0}
+#emptyState .icon{font-size:48px;opacity:.4}
+#emptyState .hint{font-size:13px;letter-spacing:.1em}
+#emptyState .sub{font-size:11px;color:rgba(255,255,255,.15)}
+#controls{padding:8px 16px 10px;background:rgba(255,255,255,.03);border-top:1px solid rgba(255,255,255,.06);flex-shrink:0}
+.ctrl-row{display:flex;align-items:center;gap:8px;margin-top:4px}
+.ctrl-row:first-child{margin-top:0}
+#scrub{flex:1;height:4px;-webkit-appearance:none;appearance:none;background:rgba(255,255,255,.1);border-radius:2px;outline:none;cursor:pointer}
+#scrub::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:#39ff14;border:2px solid #0a0a0f;cursor:pointer}
+#scrub.processing::-webkit-slider-thumb{background:#ffcc00}
+#timeDisplay{font-size:11px;color:rgba(255,255,255,.4);font-variant-numeric:tabular-nums;min-width:90px;text-align:center}
+#speedDisplay{font-size:11px;color:rgba(255,255,255,.4);min-width:32px;text-align:center}
+.progress-wrap{flex:1;height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;position:relative}
+.progress-bar{height:100%;background:#39ff14;border-radius:2px;transition:width .3s;width:0%}
+.progress-bar.wait{background:#ffcc00}
+.progress-label{font-size:10px;color:rgba(255,255,255,.25);margin-left:8px;white-space:nowrap}
+#side{width:320px;background:rgba(255,255,255,.02);border-left:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
+#sideTabs{display:flex;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0}
+#sideTabs .tab{flex:1;padding:8px;text-align:center;font-size:11px;color:rgba(255,255,255,.3);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;letter-spacing:.05em}
+#sideTabs .tab:hover{color:rgba(255,255,255,.5)}
+#sideTabs .tab.active{color:#39ff14;border-bottom-color:#39ff14}
+#sideContent{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+.panel{display:none;flex:1;flex-direction:column;gap:10px}
+.panel.active{display:flex}
+.section-label{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.25);margin-bottom:2px}
+.joint-option{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px;color:rgba(255,255,255,.6);cursor:pointer}
+.joint-option:hover{color:#fff}
+.joint-option input{accent-color:#39ff14}
+.joint-option .dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}
+.angle-card{background:rgba(255,255,255,.03);border-radius:6px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center}
+.angle-card .name{font-size:11px;color:rgba(255,255,255,.5)}
+.angle-card .val{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.angle-card .val.good{color:#39ff14}
+.angle-card .val.warn{color:#ffcc00}
+.angle-card .val.bad{color:#ff5050}
+.angle-card .delta{font-size:10px;color:rgba(255,255,255,.3);margin-left:6px}
+.heat-row{display:flex;align-items:center;gap:6px;padding:2px 0;font-size:11px}
+.heat-row .label{width:50px;color:rgba(255,255,255,.5);text-align:right;flex-shrink:0}
+.heat-row .bar-wrap{flex:1;height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden}
+.heat-row .bar-fill{height:100%;border-radius:3px;transition:width .3s}
+.score-ring{width:72px;height:72px;border-radius:50%;background:conic-gradient(#39ff14 var(--p,0%), rgba(255,255,255,.06) var(--p,0%));display:flex;align-items:center;justify-content:center;position:relative;margin:0 auto}
+.score-ring .inner{width:58px;height:58px;border-radius:50%;background:#0a0a0f;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#39ff14}
+.score-ring .inner.warn{color:#ffcc00}
+.score-ring .inner.bad{color:#ff5050}
+.ref-box{background:rgba(255,255,255,.03);border-radius:6px;padding:8px;text-align:center;font-size:11px;color:rgba(255,255,255,.3);min-height:60px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;cursor:pointer;border:1px dashed rgba(255,255,255,.1)}
+.ref-box.active{border-color:rgba(57,255,20,.3);background:rgba(57,255,20,.04)}
+.ref-box img{max-width:100%;max-height:80px;border-radius:4px}
+@media(max-width:800px){#side{width:260px}.toolbar{gap:6px;padding:8px 10px}#controls{padding:6px 10px 8px}}
+@media(max-width:600px){#main{flex-direction:column}#side{width:100%;border-left:none;border-top:1px solid rgba(255,255,255,.06);max-height:40vh}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="toolbar">
+    <div class="logo">REPLAY <small>AI 运动分析</small></div>
+    <div class="sep"></div>
+    <label class="btn primary"><span>📁</span> 导入视频<input type="file" id="loadVideo" accept="video/*"></label>
+    <label class="btn"><span>📁</span> 参考视频<input type="file" id="loadRef" accept="video/*"></label>
+    <div class="sep"></div>
+    <button class="btn btn-icon" id="btnDetect" title="处理全部帧">⚡</button>
+    <button class="btn btn-sm" id="btnQuality" title="切换处理质量">⚡快速</button><button class="btn btn-icon" id="btnExport" title="导出数据" disabled>💾</button>
+    <div class="sep"></div>
+    <span id="fileLabel" style="font-size:11px;color:rgba(255,255,255,.25);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">未加载视频</span>
+  </div>
+  <div id="main">
+    <div id="player">
+      <div id="videoWrap">
+        <video id="vid" muted playsinline crossorigin="anonymous"></video>
+        <canvas id="ov"></canvas>
+        <div id="emptyState">
+          <div class="icon">🎯</div>
+          <div class="hint">导入运动视频开始分析</div>
+          <div class="sub">支持 MP4 / WebM / MOV 格式</div>
+        </div>
+      </div>
+      <div id="controls">
+        <div class="ctrl-row">
+          <div class="progress-wrap" id="progressWrap">
+            <div class="progress-bar" id="progressBar"></div>
+          </div>
+          <span class="progress-label" id="progressLabel">待处理</span>
+        </div>
+        <div class="ctrl-row">
+          <div class="btn-group">
+            <button class="btn btn-sm" id="btnStart">⏮</button>
+            <button class="btn btn-sm" id="btnPrev">◀</button>
+            <button class="btn btn-sm btn-icon" id="btnPlay">▶</button>
+            <button class="btn btn-sm" id="btnNext">▶</button>
+            <button class="btn btn-sm" id="btnEnd">⏭</button>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-sm" id="btnSlower">−</button>
+            <span id="speedDisplay">1.0x</span>
+            <button class="btn btn-sm" id="btnFaster">+</button>
+          </div>
+          <div class="btn-group" id="modeGroup">
+            <button class="btn btn-sm active" data-mode="skel">骨架</button>
+            <button class="btn btn-sm" data-mode="trail">轨迹</button>
+            <button class="btn btn-sm" data-mode="heat">偏差</button>
+          </div>
+          <input type="range" id="scrub" min="0" max="1000" value="0" step="1">
+          <span id="timeDisplay">0:00.000 / 0:00.000</span>
+        </div>
+      </div>
+    </div>
+    <div id="side">
+      <div id="sideTabs">
+        <div class="tab active" data-tab="analysis">📊 分析</div>
+        <div class="tab" data-tab="joints">🦴 关节</div>
+        <div class="tab" data-tab="compare">📐 对比</div>
+      </div>
+      <div id="sideContent">
+        <div class="panel active" id="panel-analysis">
+          <div class="section-label">整体评分</div>
+          <div class="score-ring" id="scoreRing" style="--p:0%"><div class="inner" id="scoreVal">--</div></div>
+          <div style="text-align:center;font-size:10px;color:rgba(255,255,255,.25);margin-top:-4px">与参考动作的相似度</div>
+          <div class="section-label" style="margin-top:4px">角度分析</div>
+          <div id="angleList">
+            <div class="angle-card"><span class="name">左肘角</span><span><span class="val good" id="a_le">--°</span><span class="delta" id="d_le"></span></span></div>
+            <div class="angle-card"><span class="name">右肘角</span><span><span class="val good" id="a_re">--°</span><span class="delta" id="d_re"></span></span></div>
+            <div class="angle-card"><span class="name">左膝角</span><span><span class="val good" id="a_lk">--°</span><span class="delta" id="d_lk"></span></span></div>
+            <div class="angle-card"><span class="name">右膝角</span><span><span class="val good" id="a_rk">--°</span><span class="delta" id="d_rk"></span></span></div>
+            <div class="angle-card"><span class="name">左髋角</span><span><span class="val good" id="a_lh">--°</span><span class="delta" id="d_lh"></span></span></div>
+            <div class="angle-card"><span class="name">右髋角</span><span><span class="val good" id="a_rh">--°</span><span class="delta" id="d_rh"></span></span></div>
+            <div class="angle-card"><span class="name">躯干倾角</span><span><span class="val good" id="a_to">--°</span><span class="delta" id="d_to"></span></span></div>
+          </div>
+          <div class="section-label" style="margin-top:4px">偏差热力图</div>
+          <div id="heatList"></div>
+          <div class="section-label" style="margin-top:4px">状态</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.3);line-height:1.6" id="statusLine">等待导入视频...</div>
+        </div>
+        <div class="panel" id="panel-joints">
+          <div class="section-label">显示关节</div>
+          <div id="jointToggleList"></div>
+          <div class="section-label" style="margin-top:8px">轨迹颜色</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.35);line-height:1.6">轨迹颜色代表时间顺序：<span style="color:#00ff88">起点</span> → <span style="color:#ffcc00">中点</span> → <span style="color:#ff3366">终点</span></div>
+          <div class="section-label" style="margin-top:8px">轨迹长度</div>
+          <input type="range" id="trailLen" min="10" max="300" value="90" style="width:100%;accent-color:#39ff14">
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,.25)"><span>10帧</span><span id="trailLenLabel">90帧</span><span>300帧</span></div>
+        </div>
+        <div class="panel" id="panel-compare">
+          <div class="section-label">参考视频</div>
+          <div class="ref-box" id="refBox">
+            <span id="refStatus">点击加载参考视频</span>
+            <video id="refVid" hidden muted playsinline></video>
+          </div>
+          <div style="display:none" id="refInfo">
+            <div style="font-size:11px;color:rgba(255,255,255,.4)" id="refLabel"></div>
+            <div class="progress-wrap" style="margin-top:4px"><div class="progress-bar wait" id="refProgress" style="width:0%"></div></div>
+            <div style="font-size:10px;color:rgba(255,255,255,.25)" id="refProgressLabel">等待处理</div>
+          </div>
+          <div class="section-label" style="margin-top:8px">阈值设置</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span style="font-size:11px;color:rgba(255,255,255,.4)">偏差容忍</span>
+            <input type="range" id="thresholdSlider" min="1" max="20" value="8" step="0.5" style="flex:1;accent-color:#39ff14">
+            <span id="thresholdLabel" style="font-size:11px;color:rgba(255,255,255,.5);min-width:32px">8%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+var $=function(s){return document.querySelector(s)};
+var $$=function(s){return document.querySelectorAll(s)};
+
+// ===== DOM REFS =====
+var vid=$('#vid'),ov=$('#ov'),ctx=ov.getContext('2d');
+var loadVideo=$('#loadVideo'),loadRef=$('#loadRef');
+var btnPlay=$('#btnPlay'),btnPrev=$('#btnPrev'),btnNext=$('#btnNext');
+var btnStart=$('#btnStart'),btnEnd=$('#btnEnd');
+var btnSlower=$('#btnSlower');
+var btnFaster=$('#btnFaster');
+var scrub=$('#scrub'),timeDisp=$('#timeDisplay'),speedDisp=$('#speedDisplay');
+var progressBar=$('#progressBar'),progressLabel=$('#progressLabel');
+var fileLabel=$('#fileLabel'),statusLine=$('#statusLine');
+var btnDetect=$('#btnDetect'),btnExport=$('#btnExport');
+var modeGroup=$('#modeGroup'),emptyState=$('#emptyState');
+var trailLen=$('#trailLen'),trailLenLabel=$('#trailLenLabel');
+
+// Side panel
+var scoreVal=$('#scoreVal'),scoreRing=$('#scoreRing');
+var heatList=$('#heatList'),jointToggleList=$('#jointToggleList');
+var refBox=$('#refBox'),refVid=$('#refVid'),refStatus=$('#refStatus');
+var refInfo=$('#refInfo'),refLabel=$('#refLabel');
+var refProgress=$('#refProgress'),refProgressLabel=$('#refProgressLabel');
+var thresholdSlider=$('#thresholdSlider'),thresholdLabel=$('#thresholdLabel');
+
+// Angle display elements
+var angleEls={le:$('#a_le'),re:$('#a_re'),lk:$('#a_lk'),rk:$('#a_rk'),lh:$('#a_lh'),rh:$('#a_rh'),to:$('#a_to')};
+var deltaEls={le:$('#d_le'),re:$('#d_re'),lk:$('#d_lk'),rk:$('#d_rk'),lh:$('#d_lh'),rh:$('#d_rh'),to:$('#d_to')};
+
+// ===== CONSTANTS =====
+var POSE_CONNECTIONS=[[0,1],[1,2],[2,3],[0,4],[4,5],[5,6],[3,7],[6,8],[9,10],[7,9],[8,10],[11,12],[11,13],[13,15],[12,14],[14,16],[15,17],[15,19],[15,21],[17,19],[16,18],[16,20],[16,22],[18,20],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,29],[29,31],[27,31],[28,30],[30,32],[28,32]];
+var POSE_NAMES=['鼻','左眼内','左眼','左眼外','右眼内','右眼','右眼外','左耳','右耳','嘴左','嘴右','左肩','右肩','左肘','右肘','左腕','右腕','左小指','右小指','左食指','右食指','左拇指','右拇指','左髋','右髋','左膝','右膝','左踝','右踝','左跟','右跟','左足尖','右足尖'];
+var HAND_CONNECTIONS=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[0,17],[17,18],[18,19],[19,20]];
+var HAND_NAMES=['腕','拇指CMC','拇指MCP','拇指IP','拇指尖','食指MCP','食指PIP','食指DIP','食指尖','中指MCP','中指PIP','中指DIP','中指尖','无名指MCP','无名指PIP','无名指DIP','无名指尖','小指MCP','小指PIP','小指DIP','小指尖'];
+var BASE='./mediapipe/',PROCESS_INTERVAL=33;
+
+// ===== STATE =====
+var state={
+  videoLoaded:false,refLoaded:false,
+  playing:false,speed:1.0,
+  mode:'skel', // skel | trail | heat
+  modelsReady:false,
+  processing:false,
+  highQuality:false,
+  trailFrames:90,
+  threshold:8,
+  currentFrame:0,
+  totalFrames:0,
+  fps:30,
+  duration:0
+};
+
+// Data: array of {time, pose, face, hands, handedness}
+var frameData=[];
+var refFrameData=[];
+var jointVisibility={}; // per-joint toggle
+
+// MediaPipe instances
+var poseModel=null,faceModel=null,handsModel=null;
+
+// ===== COORDINATE HELPERS =====
+function getVideoRect(){
+  var vr=vid.getBoundingClientRect(),wrap=$('#videoWrap').getBoundingClientRect();
+  return {x:vr.left-wrap.left,y:vr.top-wrap.top,w:vr.width,h:vr.height};
+}
+function normX(p){return(1-p.x)*state.videoW||0}
+function normY(p){return p.y*state.videoH||0}
+function angleBetween(a,b,c){
+  var dx1=a.x-b.x,dy1=a.y-b.y,dx2=c.x-b.x,dy2=c.y-b.y;
+  var dot=dx1*dx2+dy1*dy2;
+  var m1=Math.sqrt(dx1*dx1+dy1*dy1),m2=Math.sqrt(dx2*dx2+dy2*dy2);
+  if(m1<.001||m2<.001)return 0;
+  return Math.acos(Math.max(-1,Math.min(1,dot/(m1*m2))))*180/Math.PI;
+}
+
+// ===== TIME FORMAT =====
+function fmtTime(s){
+  var m=Math.floor(s/60),sec=s-m*60;
+  return m+':'+sec.toFixed(3).padStart(6,'0');
+}
+function fmtFrame(f){return Math.floor(f)+'f'}
+
+// ===== LOAD SCRIPTS =====
+function loadScript(src){
+  return new Promise(function(ok,no){
+    var e=document.createElement('script');
+    e.src=src;e.onload=ok;e.onerror=no;
+    document.head.appendChild(e);
+  });
+}
+
+// ===== INIT MODELS =====
+async function initModels(){
+  if(state.modelsReady)return true;
+  status('加载AI模型...');
+  try{
+    await loadScript(BASE+'pose.js');
+    if(typeof Pose==='undefined')throw 'Pose not found';
+    poseModel=new Pose({locateFile:function(f){return BASE+f}});
+    poseModel.setOptions({modelComplexity:state.highQuality?2:1,smoothLandmarks:true,enableSegmentation:false,minDetectionConfidence:.5,minTrackingConfidence:.5});
+    poseModel.onResults(function(r){poseModel._last=r});
+    poseModel._last=null;
+  }catch(e){console.warn('Pose加载失败',e);status('Pose模型加载失败');return false}
+
+  try{
+    await loadScript(BASE+'face_mesh.js');
+    if(typeof FaceMesh!=='undefined'){
+      faceModel=new FaceMesh({locateFile:function(f){return BASE+f}});
+      faceModel.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:.5,minTrackingConfidence:.5});
+      faceModel.onResults(function(r){faceModel._last=r});
+      faceModel._last=null;
+    }
+  }catch(e){console.warn('FaceMesh跳过',e)}
+
+  try{
+    await loadScript(BASE+'hands.js');
+    if(typeof Hands!=='undefined'){
+      handsModel=new Hands({locateFile:function(f){return BASE+f}});
+      handsModel.setOptions({modelComplexity:1,minDetectionConfidence:.5,minTrackingConfidence:.5});
+      handsModel.onResults(function(r){handsModel._last=r});
+      handsModel._last=null;
+    }
+  }catch(e){console.warn('Hands跳过',e)}
+
+  state.modelsReady=true;
+  status(state.highQuality?'高质量模式就绪':'快速模式就绪 (面/手仅显示时处理)');
+  return true;
+}
+
+function status(s){statusLine.textContent=s}
+
+// ===== PROCESS SINGLE FRAME =====
+var _sc=document.createElement('canvas'),_sctx=_sc.getContext('2d');
+_sc.width=640;_sc.height=480;
+
+// processFrame removed - inline in batchProcess
+
+// ===== BATCH PROCESS =====
+async function batchProcess(target,frameCount,duration,fps,srcVid,options){
+  options=options||{};
+  target.length=0;
+  var processing=target===refFrameData?'ref':'main';
+  var bar=processing==='ref'?refProgress:progressBar;
+  var label=processing==='ref'?refProgressLabel:progressLabel;
+
+  bar.style.width='0%';
+  label.textContent='启动中...';
+  if(processing==='ref'&&refInfo)refInfo.style.display='block';
+
+  // Pre-allocate array
+  for(var i=0;i<frameCount;i++)target.push(null);
+
+  // Play-based capture: no seeking, just grab frames as video plays
+  srcVid.currentTime=0;
+  srcVid.playbackRate=0.5;
+  srcVid.muted=true;
+  srcVid.play();
+
+  var processed=0;
+  var lastFrame=-1;
+  var inFlight=false;
+  var _qc=document.createElement('canvas'),_qctx=_qc.getContext('2d');
+  _qc.width=320;_qc.height=240; // smaller for speed
+
+  function doProcess(){
+    if(inFlight||processed>=frameCount||srcVid.ended||srcVid.paused){
+      if(processed>=frameCount||srcVid.ended){
+        bar.style.width='100%';
+        label.textContent=frameCount+'帧 完成';
+        status('处理完成 '+frameCount+'帧');
+      }
+      return;
+    }
+    var cf=Math.round(srcVid.currentTime*fps);
+    if(cf===lastFrame||cf>=frameCount||target[cf]!==null){
+      setTimeout(doProcess,5);
+      return;
+    }
+    lastFrame=cf;
+    inFlight=true;
+    _qctx.drawImage(srcVid,0,0,320,240);
+    // Process only Pose for speed, skip face/hands during batch
+    var doFace=(faceModel&&options.face);
+    var doHands=(handsModel&&options.hands);
+    (async function(){
+      try{
+        var result={time:cf/fps,pose:null,face:null,hands:null,handedness:null};
+        if(poseModel){
+          await poseModel.send({image:_qc});
+          var pr=poseModel._last;
+          if(pr&&pr.poseLandmarks)result.pose=pr.poseLandmarks.map(function(l){return{x:l.x,y:l.y,z:l.z,visibility:l.visibility}});
+        }
+        if(doFace&&faceModel){
+          await faceModel.send({image:_qc});
+          var fr=faceModel._last;
+          if(fr&&fr.multiFaceLandmarks&&fr.multiFaceLandmarks.length>0)
+            result.face=fr.multiFaceLandmarks[0].map(function(l){return{x:l.x,y:l.y,z:l.z}});
+        }
+        if(doHands&&handsModel){
+          await handsModel.send({image:_qc});
+          var hr=handsModel._last;
+          if(hr&&hr.multiHandLandmarks&&hr.multiHandLandmarks.length>0){
+            result.hands=hr.multiHandLandmarks.map(function(hl){
+              return hl.map(function(l){return{x:l.x,y:l.y,z:l.z}});
+            });
+            result.handedness=hr.multiHandedness?hr.multiHandedness.map(function(h){return h.label}):null;
+          }
+        }
+        target[cf]=result;
+        processed++;
+        var pct=Math.round(processed/frameCount*100);
+        bar.style.width=pct+'%';
+        label.textContent='处理中 '+processed+'/'+frameCount;
+      }catch(e){}
+      inFlight=false;
+      setTimeout(doProcess,0);
+    })();
+  }
+  setTimeout(doProcess,100);
+  // Wait for completion
+  while(processed<frameCount&&!srcVid.ended){
+    await new Promise(function(r){setTimeout(r,100)});
+  }
+  srcVid.pause();
+  bar.style.width='100%';
+  label.textContent=frameCount+'帧 完成';
+  status('处理完成 '+frameCount+'帧');
+}
+
+// ===== VIDEO LOADING =====
+function loadMainVideo(file){
+  var url=URL.createObjectURL(file);
+  vid.src=url;
+  vid.onloadedmetadata=function(){
+    state.duration=vid.duration;
+    state.fps=Math.min(30,Math.round(1/(vid.duration/vid.videoWidth||0.033))||30);
+    state.totalFrames=Math.ceil(vid.duration*state.fps);
+    state.videoW=vid.videoWidth;
+    state.videoH=vid.videoHeight;
+    state.videoLoaded=true;
+    emptyState.style.display='none';
+    fileLabel.textContent=file.name+' ('+state.totalFrames+'帧, '+state.duration.toFixed(1)+'s)';
+    scrub.max=state.totalFrames-1;
+    timeDisp.textContent='0:00.000 / '+fmtTime(state.duration);
+    updateUI();
+    status('已加载视频，点击⚡开始处理');
+    btnDetect.disabled=false;
+    // Auto-start processing
+    if(state.modelsReady)startBatchProcess();
+  };
+  vid.play();
+}
+
+loadVideo.addEventListener('change',function(e){
+  if(e.target.files.length>0){
+    initModels().then(function(ok){
+      if(ok)loadMainVideo(e.target.files[0]);
+    });
+  }
+});
+
+// ===== START PROCESSING =====
+async function startBatchProcess(){
+  if(state.processing)return;
+  state.processing=true;
+  btnDetect.disabled=true;
+  btnDetect.textContent='⏳';
+  await batchProcess(frameData,state.totalFrames,state.duration,state.fps,vid,{face:state.highQuality,hands:state.highQuality});
+  state.processing=false;
+  btnDetect.textContent='✓';
+  btnExport.disabled=false;
+  renderFrame(0);
+}
+
+btnDetect.addEventListener('click',function(){
+  if(state.videoLoaded&&state.modelsReady)startBatchProcess();
+});
+
+// ===== QUALITY TOGGLE =====
+var btnQuality=$('#btnQuality');
+btnQuality.addEventListener('click',function(){
+  state.highQuality=!state.highQuality;
+  btnQuality.textContent=state.highQuality?'⚡高质量':'⚡快速';
+  status(state.highQuality?'已切换高质量模式 (含面部/双手)':'已切换快速模式 (仅身体骨骼)');
+});
+
+// ===== PLAYBACK CONTROLS =====
+btnPlay.addEventListener('click',function(){
+  if(!state.videoLoaded)return;
+  if(state.playing){vid.pause();state.playing=false;btnPlay.textContent='▶'}
+  else{vid.play();state.playing=true;btnPlay.textContent='⏸'}
+});
+
+vid.addEventListener('timeupdate',function(){
+  if(!state.playing)return;
+  var f=Math.round(vid.currentTime*state.fps);
+  if(f!==state.currentFrame){
+    state.currentFrame=Math.min(f,state.totalFrames-1);
+    scrub.value=state.currentFrame;
+    updateUI();
+    renderFrame(state.currentFrame);
+  }
+});
+vid.addEventListener('ended',function(){
+  state.playing=false;
+  btnPlay.textContent='▶';
+});
+
+scrub.addEventListener('input',function(){
+  if(!state.videoLoaded)return;
+  var f=parseInt(scrub.value);
+  state.currentFrame=f;
+  vid.currentTime=f/state.fps;
+  updateUI();
+  renderFrame(f);
+});
+
+btnPrev.addEventListener('click',function(){
+  if(!state.videoLoaded)return;
+  var f=Math.max(0,state.currentFrame-1);
+  state.currentFrame=f;
+  vid.currentTime=f/state.fps;
+  scrub.value=f;updateUI();renderFrame(f);
+});
+btnNext.addEventListener('click',function(){
+  if(!state.videoLoaded)return;
+  var f=Math.min(state.totalFrames-1,state.currentFrame+1);
+  state.currentFrame=f;
+  vid.currentTime=f/state.fps;
+  scrub.value=f;updateUI();renderFrame(f);
+});
+btnStart.addEventListener('click',function(){
+  if(!state.videoLoaded)return;
+  state.currentFrame=0;vid.currentTime=0;
+  scrub.value=0;updateUI();renderFrame(0);
+});
+btnEnd.addEventListener('click',function(){
+  if(!state.videoLoaded)return;
+  var f=state.totalFrames-1;
+  state.currentFrame=f;vid.currentTime=f/state.fps;
+  scrub.value=f;updateUI();renderFrame(f);
+});
+
+btnSlower.addEventListener('click',function(){
+  state.speed=Math.max(.2,state.speed-.2);
+  vid.playbackRate=state.speed;
+  speedDisp.textContent=state.speed.toFixed(1)+'x';
+});
+btnFaster.addEventListener('click',function(){
+  state.speed=Math.min(3,state.speed+.2);
+  vid.playbackRate=state.speed;
+  speedDisp.textContent=state.speed.toFixed(1)+'x';
+});
+
+// ===== MODE TOGGLE =====
+modeGroup.addEventListener('click',function(e){
+  var btn=e.target.closest('[data-mode]');
+  if(!btn)return;
+  modeGroup.querySelectorAll('.btn').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+  state.mode=btn.dataset.mode;
+  renderFrame(state.currentFrame);
+});
+
+// ===== TRAIL LENGTH =====
+trailLen.addEventListener('input',function(){
+  state.trailFrames=parseInt(trailLen.value);
+  trailLenLabel.textContent=state.trailFrames+'帧';
+  if(state.mode==='trail')renderFrame(state.currentFrame);
+});
+
+// ===== THRESHOLD =====
+thresholdSlider.addEventListener('input',function(){
+  state.threshold=parseFloat(thresholdSlider.value);
+  thresholdLabel.textContent=state.threshold+'%';
+  if(state.mode==='heat')renderFrame(state.currentFrame);
+});
+// ===== RENDER =====
+function getFrameLandmarks(f){
+  if(!frameData||f>=frameData.length||!frameData[f])return null;
+  return frameData[f].pose;
+}
+function getFrameFace(f){
+  if(!frameData||f>=frameData.length||!frameData[f])return null;
+  return frameData[f].face;
+}
+function getFrameHands(f){
+  if(!frameData||f>=frameData.length||!frameData[f])return null;
+  return {hands:frameData[f].hands,handedness:frameData[f].handedness};
+}
+function getRefLandmarks(f){
+  if(!refFrameData||f>=refFrameData.length||!refFrameData[f])return null;
+  return refFrameData[f].pose;
+}
+
+function renderFrame(f){
+  if(!state.videoLoaded)return;
+  var W=state.videoW||640,H=state.videoH||480;
+  var dpr=Math.min(devicePixelRatio||1,2);
+  var wrap=$('#videoWrap');
+  ov.width=wrap.clientWidth*dpr;
+  ov.height=wrap.clientHeight*dpr;
+  ov.style.width=wrap.clientWidth+'px';
+  ov.style.height=wrap.clientHeight+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+
+  var cw=wrap.clientWidth,ch=wrap.clientHeight;
+  var scale=Math.min(cw/W,ch/H);
+  var ox=(cw-W*scale)/2,oy=(ch-H*scale)/2;
+
+  ctx.clearRect(0,0,cw,ch);
+
+  // Save and apply transform
+  ctx.save();
+  ctx.translate(ox,oy);
+  ctx.scale(scale,scale);
+
+  // Mirror coordinate helpers
+  function mx(p){return p.x*W}
+  function my(p){return p.y*H}
+
+  var lm=getFrameLandmarks(f);
+  var face=getFrameFace(f);
+  var handsData=getFrameHands(f);
+
+  // ===== 1. BODY SKELETON =====
+  if(lm){
+    var vis=[];
+    for(var i=0;i<33;i++)vis[i]=lm[i]?lm[i].visibility||0:0;
+
+    // Glow layer
+    ctx.strokeStyle='rgba(57,255,20,.08)';ctx.lineWidth=8;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();
+    POSE_CONNECTIONS.forEach(function(p){
+      if(!lm[p[0]]||!lm[p[1]]||vis[p[0]]<.3||vis[p[1]]<.3)return;
+      ctx.moveTo(mx(lm[p[0]]),my(lm[p[0]]));ctx.lineTo(mx(lm[p[1]]),my(lm[p[1]]));
+    });ctx.stroke();
+
+    // Mid layer
+    ctx.strokeStyle='rgba(57,255,20,.25)';ctx.lineWidth=3.5;ctx.beginPath();
+    POSE_CONNECTIONS.forEach(function(p){
+      if(!lm[p[0]]||!lm[p[1]]||vis[p[0]]<.4||vis[p[1]]<.4)return;
+      ctx.moveTo(mx(lm[p[0]]),my(lm[p[0]]));ctx.lineTo(mx(lm[p[1]]),my(lm[p[1]]));
+    });ctx.stroke();
+
+    // Core
+    ctx.strokeStyle='rgba(57,255,20,.7)';ctx.lineWidth=1.5;ctx.beginPath();
+    POSE_CONNECTIONS.forEach(function(p){
+      if(!lm[p[0]]||!lm[p[1]]||vis[p[0]]<.5||vis[p[1]]<.5)return;
+      ctx.moveTo(mx(lm[p[0]]),my(lm[p[0]]));ctx.lineTo(mx(lm[p[1]]),my(lm[p[1]]));
+    });ctx.stroke();
+
+    // Pose nodes
+    for(var i=0;i<33;i++){
+      if(!lm[i]||vis[i]<.4)continue;
+      var x=mx(lm[i]),y=my(lm[i]);
+      var major=[0,11,12,15,16,23,24].indexOf(i)>=0;
+      var r=major?3.5:2;
+      ctx.beginPath();ctx.arc(x,y,r*2,0,Math.PI*2);
+      ctx.fillStyle='rgba(57,255,20,.1)';ctx.fill();
+      ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
+      ctx.fillStyle='rgba(57,255,20,.8)';ctx.fill();
+    }
+  }
+
+  // ===== 2. HANDS =====
+  if(handsData&&handsData.hands){
+    handsData.hands.forEach(function(hl,hi){
+      if(!hl||hl.length<21)return;
+      var isLeft=handsData.handedness&&handsData.handedness[hi]==='Left';
+      var cl=isLeft?'rgba(0,240,255':'rgba(255,140,0';
+      ctx.strokeStyle=cl+',.6)';ctx.lineWidth=2;ctx.beginPath();
+      HAND_CONNECTIONS.forEach(function(p){
+        if(!hl[p[0]]||!hl[p[1]])return;
+        ctx.moveTo(mx(hl[p[0]]),my(hl[p[0]]));ctx.lineTo(mx(hl[p[1]]),my(hl[p[1]]));
+      });ctx.stroke();
+      for(var i=0;i<21;i++){
+        if(!hl[i])continue;
+        var x=mx(hl[i]),y=my(hl[i]),r=i===0?3:1.8;
+        ctx.beginPath();ctx.arc(x,y,r*2,0,Math.PI*2);
+        ctx.fillStyle=cl+',.15)';ctx.fill();
+        ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
+        ctx.fillStyle=cl+',.85)';ctx.fill();
+      }
+    });
+  }
+
+  // ===== 3. FACE MESH =====
+  if(face){
+    // Tesselation
+    if(typeof FACEMESH_TESSELATION!=='undefined'){
+      ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=1;ctx.beginPath();
+      FACEMESH_TESSELATION.forEach(function(p){
+        if(!face[p[0]]||!face[p[1]])return;
+        ctx.moveTo(mx(face[p[0]]),my(face[p[0]]));ctx.lineTo(mx(face[p[1]]),my(face[p[1]]));
+      });ctx.stroke();
+    }
+    // Face oval
+    if(typeof FACEMESH_FACE_OVAL!=='undefined'){
+      ctx.strokeStyle='rgba(255,255,255,.3)';ctx.lineWidth=1.5;ctx.beginPath();
+      FACEMESH_FACE_OVAL.forEach(function(p){
+        if(!face[p[0]]||!face[p[1]])return;
+        ctx.moveTo(mx(face[p[0]]),my(face[p[0]]));ctx.lineTo(mx(face[p[1]]),my(face[p[1]]));
+      });ctx.stroke();
+    }
+    // Lips
+    if(typeof FACEMESH_LIPS!=='undefined'){
+      ctx.strokeStyle='rgba(255,150,150,.35)';ctx.lineWidth=1.2;ctx.beginPath();
+      FACEMESH_LIPS.forEach(function(p){
+        if(!face[p[0]]||!face[p[1]])return;
+        ctx.moveTo(mx(face[p[0]]),my(face[p[0]]));ctx.lineTo(mx(face[p[1]]),my(face[p[1]]));
+      });ctx.stroke();
+    }
+    // Eyes
+    if(typeof FACEMESH_LEFT_EYE!=='undefined'){
+      ctx.strokeStyle='rgba(255,255,100,.35)';ctx.lineWidth=1.2;ctx.beginPath();
+      FACEMESH_LEFT_EYE.forEach(function(p){
+        if(!face[p[0]]||!face[p[1]])return;
+        ctx.moveTo(mx(face[p[0]]),my(face[p[0]]));ctx.lineTo(mx(face[p[1]]),my(face[p[1]]));
+      });ctx.stroke();
+    }
+    if(typeof FACEMESH_RIGHT_EYE!=='undefined'){
+      ctx.strokeStyle='rgba(255,255,100,.35)';ctx.lineWidth=1.2;ctx.beginPath();
+      FACEMESH_RIGHT_EYE.forEach(function(p){
+        if(!face[p[0]]||!face[p[1]])return;
+        ctx.moveTo(mx(face[p[0]]),my(face[p[0]]));ctx.lineTo(mx(face[p[1]]),my(face[p[1]]));
+      });ctx.stroke();
+    }
+    // Iris
+    if(typeof FACEMESH_LEFT_IRIS!=='undefined'){
+      ctx.strokeStyle='rgba(57,255,20,.5)';ctx.lineWidth=1;ctx.beginPath();
+      FACEMESH_LEFT_IRIS.forEach(function(p){
+        if(!face[p[0]]||!face[p[1]])return;
+        ctx.moveTo(mx(face[p[0]]),my(face[p[0]]));ctx.lineTo(mx(face[p[1]]),my(face[p[1]]));
+      });ctx.stroke();
+      [474,475,476,477].forEach(function(idx){
+        if(!face[idx])return;
+        var x=mx(face[idx]),y=my(face[idx]);
+        ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);
+        ctx.fillStyle='rgba(57,255,20,.15)';ctx.fill();
+        ctx.beginPath();ctx.arc(x,y,1.5,0,Math.PI*2);
+        ctx.fillStyle='rgba(57,255,20,.8)';ctx.fill();
+      });
+    }
+    if(typeof FACEMESH_RIGHT_IRIS!=='undefined'){
+      ctx.strokeStyle='rgba(57,255,20,.5)';ctx.lineWidth=1;ctx.beginPath();
+      FACEMESH_RIGHT_IRIS.forEach(function(p){
+        if(!face[p[0]]||!face[p[1]])return;
+        ctx.moveTo(mx(face[p[0]]),my(face[p[0]]));ctx.lineTo(mx(face[p[1]]),my(face[p[1]]));
+      });ctx.stroke();
+      [469,470,471,472].forEach(function(idx){
+        if(!face[idx])return;
+        var x=mx(face[idx]),y=my(face[idx]);
+        ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);
+        ctx.fillStyle='rgba(57,255,20,.15)';ctx.fill();
+        ctx.beginPath();ctx.arc(x,y,1.5,0,Math.PI*2);
+        ctx.fillStyle='rgba(57,255,20,.8)';ctx.fill();
+      });
+    }
+  }
+
+  // ===== 4. TRAJECTORY TRAILS =====
+  if(state.mode==='trail'&&frameData.length>1){
+    var trailLen=state.trailFrames;
+    var startF=Math.max(0,f-trailLen);
+    // Draw trails for major joints (0,11,12,15,16,23,24)
+    var trailJoints=[0,11,12,13,14,15,16,23,24,25,26,27,28];
+    trailJoints.forEach(function(ji){
+      var pts=[];
+      for(var tf=startF;tf<=f&&tf<frameData.length;tf++){
+        var tl=getFrameLandmarks(tf);
+        if(tl&&tl[ji]&&(tl[ji].visibility||0)>.4)pts.push({x:mx(tl[ji]),y:my(tl[ji])});
+      }
+      if(pts.length<3)return;
+      for(var pi=1;pi<pts.length;pi++){
+        var t=pi/pts.length;
+        var cr=Math.round(255*(1-t)),cg=Math.round(200*t+55*(1-t)),cb=Math.round(100*(1-t)+50*t);
+        ctx.beginPath();
+        ctx.moveTo(pts[pi-1].x,pts[pi-1].y);
+        ctx.lineTo(pts[pi].x,pts[pi].y);
+        ctx.strokeStyle='rgba('+cr+','+cg+','+cb+','+(.15+.45*t)+')';
+        ctx.lineWidth=1.5+.5*t;
+        ctx.stroke();
+      }
+    });
+  }
+
+  // ===== 5. DEVIATION HEATMAP =====
+  if(state.mode==='heat'&&refFrameData.length>0&&f<frameData.length){
+    var userLm=getFrameLandmarks(f);
+    var refLm=getRefLandmarks(f);
+    if(userLm&&refLm){
+      var threshold=state.threshold/100;
+      var maxDev=0;
+      var devs=[];
+      for(var i=0;i<33;i++){
+        if(!userLm[i]||!refLm[i]){devs.push(0);continue;}
+        var dx=userLm[i].x-refLm[i].x,dy=userLm[i].y-refLm[i].y;
+        var d=Math.sqrt(dx*dx+dy*dy);
+        devs.push(d);
+        if(d>maxDev)maxDev=d;
+      }
+      for(var i=0;i<33;i++){
+        if(!userLm[i]||devs[i]<.01)continue;
+        var intensity=Math.min(1,devs[i]/Math.max(threshold,.01));
+        if(intensity<.2)continue;
+        var x=mx(userLm[i]),y=my(userLm[i]);
+        var r=5+10*intensity;
+        ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
+        var red=Math.round(255*intensity),green=Math.round(255*(1-intensity));
+        ctx.fillStyle='rgba('+red+','+green+',0,'+(.2+.5*intensity)+')';
+        ctx.fill();
+        ctx.beginPath();ctx.arc(x,y,r*1.2,0,Math.PI*2);
+        ctx.strokeStyle='rgba('+red+','+green+',0,'+(.2+.3*intensity)+')';
+        ctx.lineWidth=1.5;ctx.stroke();
+      }
+    }
+  }
+
+  ctx.restore();
+
+  // ===== UPDATE ANALYSIS PANEL =====
+  updateAnalysis(f);
+}
+
+// ===== UI UPDATE =====
+function updateUI(){
+  timeDisp.textContent=fmtTime(state.currentFrame/state.fps)+' / '+fmtTime(state.duration);
+}
+// ===== ANALYSIS =====
+function calcAngles(lm){
+  if(!lm)return null;
+  function p(i){return lm[i]||{x:0,y:0}}
+  return {
+    le:angleBetween(p(11),p(13),p(15)), // left elbow
+    re:angleBetween(p(12),p(14),p(16)), // right elbow
+    lk:angleBetween(p(23),p(25),p(27)), // left knee
+    rk:angleBetween(p(24),p(26),p(28)), // right knee
+    lh:angleBetween(p(11),p(23),p(25)), // left hip
+    rh:angleBetween(p(12),p(24),p(26)), // right hip
+    to:angleBetween(p(12),p(11),{x:(p(23).x+p(24).x)/2,y:(p(23).y+p(24).y)/2}) // torso lean
+  };
+}
+
+function calcDeviation(userLm,refLm){
+  if(!userLm||!refLm)return{total:0,perJoint:[]};
+  var per=[],sum=0,cnt=0;
+  for(var i=0;i<33;i++){
+    if(!userLm[i]||!refLm[i]||(userLm[i].visibility||0)<.3){per.push(0);continue}
+    var dx=userLm[i].x-refLm[i].x,dy=userLm[i].y-refLm[i].y;
+    var d=Math.sqrt(dx*dx+dy*dy);
+    per.push(d);
+    sum+=d;cnt++;
+  }
+  return{total:cnt>0?sum/cnt:0,perJoint:per};
+}
+
+function updateAnalysis(f){
+  var lm=getFrameLandmarks(f);
+  var refLm=getRefLandmarks(Math.min(f,refFrameData.length-1));
+
+  // Angles
+  var a=calcAngles(lm);
+  if(a){
+    var keys=['le','re','lk','rk','lh','rh','to'];
+    var names=['左肘','右肘','左膝','右膝','左髋','右髋','躯干'];
+    keys.forEach(function(k,i){
+      var el=angleEls[k];
+      if(el){
+        var v=a[k];
+        el.textContent=Math.round(v)+'°';
+        el.className='val good';
+      }
+      // Delta vs reference
+      var del=deltaEls[k];
+      if(del&&refLm){
+        var ra=calcAngles(refLm);
+        if(ra){
+          var diff=Math.abs(a[k]-ra[k]);
+          del.textContent='±'+Math.round(diff)+'°';
+          del.style.color=diff<10?'rgba(255,255,255,.3)':diff<20?'#ffcc00':'#ff5050';
+        }
+      }
+    });
+  }
+
+  // Score calculation (if reference available)
+  if(refLm&&lm){
+    var dev=calcDeviation(lm,refLm);
+    var score=Math.max(0,Math.round(100*(1-Math.min(1,dev.total*3))));
+    scoreVal.textContent=score;
+    scoreVal.className='inner'+(score<60?' bad':score<80?' warn':'');
+    scoreRing.style.setProperty('--p',score+'%');
+
+    // Heatmap
+    updateHeatmap(dev.perJoint);
+  }else{
+    if(refFrameData.length>0&&lm){
+      var dev=calcDeviation(lm,getRefLandmarks(Math.min(f,refFrameData.length-1)));
+      if(dev)updateHeatmap(dev.perJoint);
+    }
+  }
+}
+
+function updateHeatmap(perJoint){
+  if(!perJoint||perJoint.length<33){
+    heatList.innerHTML='<div style="font-size:11px;color:rgba(255,255,255,.2)">无参考数据</div>';
+    return;
+  }
+  var html='';
+  // Show worst 10 joints
+  var indices=perJoint.map(function(v,i){return{idx:i,val:v}})
+    .sort(function(a,b){return b.val-a.val}).slice(0,10);
+  indices.forEach(function(item){
+    var i=item.idx,pct=Math.min(100,Math.round(item.val*500));
+    var color=pct<30?'rgba(57,255,20,'+(.3+pct/100)+')':
+             pct<60?'rgba(255,204,0,'+(.3+pct/100)+')':
+             'rgba(255,80,80,'+(.3+pct/100)+')';
+    html+='<div class="heat-row">'+
+      '<span class="label">'+POSE_NAMES[i]+'</span>'+
+      '<div class="bar-wrap"><div class="bar-fill" style="width:'+pct+'%;background:'+color+'"></div></div>'+
+      '<span style="font-size:10px;color:rgba(255,255,255,.3);min-width:28px">'+(item.val*100).toFixed(1)+'%</span>'+
+      '</div>';
+  });
+  heatList.innerHTML=html;
+}
+
+// ===== JOINT TOGGLE LIST =====
+function initJointToggle(){
+  var html='';
+  var major=[0,11,12,13,14,15,16,23,24,25,26,27,28];
+  major.forEach(function(i){
+    jointVisibility[i]=true;
+    html+='<label class="joint-option">'+
+      '<input type="checkbox" checked data-ji="'+i+'">'+
+      '<span class="dot" style="background:'+['#39ff14','#00f0ff','#ff8c00','#ffcc00'][i%4]+'"></span>'+
+      POSE_NAMES[i]+
+      '</label>';
+  });
+  jointToggleList.innerHTML=html;
+  jointToggleList.addEventListener('change',function(e){
+    var input=e.target.closest('input');
+    if(!input)return;
+    var ji=parseInt(input.dataset.ji);
+    jointVisibility[ji]=input.checked;
+    if(state.mode==='trail')renderFrame(state.currentFrame);
+  });
+}
+initJointToggle();
+
+// ===== REFERENCE VIDEO =====
+loadRef.addEventListener('change',function(e){
+  if(e.target.files.length>0){
+    loadReferenceVideo(e.target.files[0]);
+  }
+});
+
+refBox.addEventListener('click',function(){loadRef.click()});
+
+async function loadReferenceVideo(file){
+  var url=URL.createObjectURL(file);
+  refVid.src=url;
+  refVid.onloadedmetadata=function(){
+    state.refLoaded=true;
+    refLabel.textContent=file.name+' ('+refVid.duration.toFixed(1)+'s)';
+    refInfo.style.display='block';
+    refStatus.textContent='处理中...';
+    refBox.classList.add('active');
+
+    // Store original video time
+    var origTime=vid.currentTime;
+
+    // Process reference video
+    var refFps=Math.min(30,Math.round(1/(refVid.duration/refVid.videoWidth||0.033))||30);
+    var refFrames=Math.ceil(refVid.duration*refFps);
+    status('处理参考视频...');
+
+    // Switch to ref video for processing
+    var wasPlaying=state.playing;
+    if(wasPlaying){vid.pause();state.playing=false;btnPlay.textContent='▶'}
+
+    batchProcess(refFrameData,refFrames,refVid.duration,refFps,refVid,{face:true,hands:true}).then(function(){
+      refStatus.textContent='✓ 已处理 '+refFrames+'帧';
+      refProgress.style.width='100%';
+      refProgressLabel.textContent=refFrames+'帧 完成';
+      status('参考视频就绪，可进行对比分析');
+      // Restore main video position
+      vid.currentTime=origTime;
+      renderFrame(state.currentFrame);
+    });
+  };
+}
+
+// ===== TAB SWITCHING =====
+$$('.tab').forEach(function(tab){
+  tab.addEventListener('click',function(){
+    $$('.tab').forEach(function(t){t.classList.remove('active')});
+    tab.classList.add('active');
+    $$('.panel').forEach(function(p){p.classList.remove('active')});
+    var target=document.getElementById('panel-'+tab.dataset.tab);
+    if(target)target.classList.add('active');
+  });
+});
+
+// ===== CANVAS RESIZE =====
+function resizeCanvas(){
+  var wrap=$('#videoWrap');
+  ov.width=wrap.clientWidth*(devicePixelRatio||1);
+  ov.height=wrap.clientHeight*(devicePixelRatio||1);
+  ov.style.width=wrap.clientWidth+'px';
+  ov.style.height=wrap.clientHeight+'px';
+}
+addEventListener('resize',function(){
+  if(state.videoLoaded)renderFrame(state.currentFrame);
+});
+
+// ===== KEYBOARD SHORTCUTS =====
+document.addEventListener('keydown',function(e){
+  if(e.target.tagName==='INPUT')return;
+  switch(e.code){
+    case'Space':e.preventDefault();btnPlay.click();break;
+    case'ArrowLeft':btnPrev.click();break;
+    case'ArrowRight':btnNext.click();break;
+    case'ArrowUp':btnFaster.click();break;
+    case'ArrowDown':btnSlower.click();break;
+    case'KeyS':btnStart.click();break;
+    case'KeyE':btnEnd.click();break;
+  }
+});
+
+// ===== EXPORT =====
+btnExport.addEventListener('click',function(){
+  if(frameData.length<2)return;
+  var json=JSON.stringify(frameData);
+  var blob=new Blob([json],{type:'application/json'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;a.download='motion_data_'+new Date().toISOString().slice(0,19).replace(/[:-]/g,'')+'.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  status('数据已导出');
+});
+
+// ===== INIT =====
+status('就绪');
+</script>
+</body>
+</html>
